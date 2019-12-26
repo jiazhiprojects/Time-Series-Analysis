@@ -1,0 +1,153 @@
+---
+title: "a3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tseries)
+library(ggplot2)
+#install.packages("forecast")
+library(forecast)
+library(MASS)
+```
+
+Q1
+```{r}
+data_pre<-read.csv(file="IBM.csv", header=TRUE, sep=",") 
+data_pre$Date <- as.Date(data_pre$Date, format = "%Y-%m-%d")
+data<-data_pre[data_pre$Date >= "2015-01-01" & data_pre$Date <= "2018-12-31",]
+dim(data)
+tail(data, n=30)
+```
+From the R output above, length of data is 1006.
+
+Q2
+```{r}
+ts = as.ts(data$Adj.Close, start=2015, frequency=12)
+acf(ts, lag.max=40, main="ACF_PRICE")
+acf(diff(ts), lag.max=40, main="ACF_CHANGE")
+pacf(ts, lag.max=40, main="PACF_PRICE")
+pacf(diff(ts), lag.max=40, main="PACF_CHANGE")
+```
+
+I would pick p=1 since the ACF_PRICE figure shows the sample autocorrelation function appears to be decreasing exponentially.
+
+Q3
+```{r}
+Box.test(ts, lag=40, type="Ljung-Box")
+```
+Null hypothesis of white noise is rejected because 
+of the very small p-value of Box test. At least 1 of the first 40 autocorrelations is nonzero
+
+Q4
+```{r}
+AR1 = arima(data$Adj.Close, order = c(1,0,0))
+print(AR1)
+Box.test(AR1$resid, type = "Ljung", lag = 40, fitdf = 1)
+```
+The large p-value suggests we cannot reject that the residuals are uncorrelated,. Therefore AR1 is a good fit.
+The model with estimated parameters is:
+$$Y_t - 132.6845 = 0.9905Y_{t-1} + error$$
+                                                                                                 
+Q5
+```{r}
+adf.test(ts)
+pp.test(ts)
+kpss.test(ts)
+```
+The large p-value in PP and ADF tests suggest we reject that data is stationary. The small p-value in 
+KPSS test suggests we do not reject that data is non-stationary.
+
+In conclusion the tests suggest data is non-stationary.
+
+Q6
+```{r}
+qqnorm(AR1$residuals, asp = 1)
+qqline(AR1$residuals, asp=1)
+```
+
+From the Normal Q-Q plot we can see the residuals do not follow Gaussian. This concave-convex pattern suggests that it has light tails.
+
+Q7
+```{r}
+ARIMA = auto.arima(data$Adj.Close, max.p = 5, max.q = 5, ic = "aic")
+print(ARIMA)
+```
+
+From the R output above, ARIMA(0, 1, 0) is the best model. The model is
+$$Y_t =Y_{t-1} + error$$
+It appeas that it is a random walk.
+
+Q8
+```{r warning=FALSE}
+library(MASS)
+tfit <- fitdistr(ARIMA$residuals, "t")
+```
+```{r}
+print(tfit)
+```
+
+Q9
+```{r}
+x<-rt(1006, df = 3.4)
+curve(dt(x, df = 3.4), -10, 10, col = 'red')
+res <- ARIMA$residuals
+
+fitted_val <- dt((ARIMA$residuals + 0.03774) / 1.1262, df=3.4)
+
+points(res, fitted_val, col = 'blue')
+legend("bottomleft", legend=c("empirical", "fitted"),
+       col=c("red", "blue"), lty=1:2, cex=0.8)
+qqplot(x,fitted_val, main="quantile plot")
+```
+
+From the density plots and the quantile plot, t-distribution is a good fit.
+
+
+Q10
+```{r}
+#model besed resampling
+n <- 1000
+sim <- rep(0, 1000)
+error <- rnorm(n)
+sim[1] <- error[1]
+for (i in 2:n) {
+sim[i] <- 132.6845 + 0.9905*sim[i-1] + error[i]
+}
+```
+I used the AR1 model for resamping and forecasting. Above is a model based re-sampling of the AR1 model i got in Q4. There are 1000 simulations in total. Next I will forecast on the simulated time series.
+
+```{r}
+simFit = arima(sim, order = c(1,0,0))
+library(forecast) 
+forecasts = predict(simFit, 31) 
+#below is the prediction for 31 days in Jan 2019.
+day = seq(1, 31, by=1)
+upper <- forecasts$pred + 1.96*forecasts$se
+lower <- forecasts$pred - 1.96*forecasts$se
+plot(day, forecasts$pred, ylim = c(12000, 16000), main = "Confidence Band")
+points(day, upper, col = "red")
+points(day, lower, col = "red")
+```
+
+Q11
+```{r}
+ts_log = as.ts(log(data$Adj.Close), start=2015, frequency=12)
+acf(ts_log, lag.max=40, main="ACF_PRICE")
+acf(diff(ts_log), lag.max=40, main="ACF_CHANGE")
+pacf(ts_log, lag.max=40, main="PACF_PRICE")
+pacf(ts_log, lag.max=40, main="PACF_CHANGE")
+plot(data$Date, log(data$Adj.Close), xlab = "year", ylab = "log(price)")
+plot(data$Date, data$Adj.Close, xlab = "year",ylab = "price")
+```
+
+From conparision of the 2 graphs. After taking logrithis, the y-axis labels ranges from 4.6 to 5.1 instead of the original 100 to 160. More precisely, taking logarithms is very helpful in stabilizing the size of the oscillations.
+
+
+
+
+
+
+
+
